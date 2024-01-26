@@ -1,4 +1,5 @@
 package com.example.swiftdrop.controller;
+
 import com.example.swiftdrop.model.Order;
 import com.example.swiftdrop.model.OrderItem;
 import com.example.swiftdrop.service.OrderService;
@@ -7,8 +8,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
-import static java.util.Objects.isNull;
-
 
 @RestController
 @RequestMapping("/orders")
@@ -16,8 +15,9 @@ import static java.util.Objects.isNull;
 public class OrderController {
 
     private final OrderService orderService;
+
     @Autowired
-    public OrderController(OrderService orderService){
+    public OrderController(OrderService orderService) {
         this.orderService = orderService;
     }
 
@@ -26,15 +26,9 @@ public class OrderController {
     public Order getById(@PathVariable String id) {
         try {
             long convertedId = Long.parseLong(id);
-            Order order = orderService.getOrder(convertedId);
-            if(isNull(order)) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
-            return order;
+            return orderService.getOrder(convertedId);
         } catch (Exception exception) {
-            if (exception instanceof NumberFormatException) {
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND);
-            } else {
-                throw exception;
-            }
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage(), exception);
         }
     }
 
@@ -42,32 +36,24 @@ public class OrderController {
     public Order save(@RequestBody Order order) {
         return orderService.create(order);
     }
+
     @PutMapping("/{id}")
     public Order update(@RequestBody Order order, @PathVariable String id) {
         try {
             long convertedId = Long.parseLong(id);
-            Order newOrder = orderService.update(order, convertedId);
-            if(isNull(newOrder)) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
-            return newOrder;
+            return orderService.update(order, convertedId);
         } catch (Exception exception) {
-            if (exception instanceof NumberFormatException) {
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND);
-            } else {
-                throw exception;
-            }
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage(), exception);
         }
     }
+
     @PatchMapping("/{id}")
     public Order addProduct(@PathVariable String id, @RequestBody OrderItem orderItem) {
         try {
             long convertedId = Long.parseLong(id);
-            return orderService.addProductToOrder(convertedId, orderItem);
+            return orderService.addProduct(convertedId, orderItem);
         } catch (Exception exception) {
-            if (exception instanceof NumberFormatException) {
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND);
-            } else {
-                throw exception;
-            }
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage(), exception);
         }
     }
 
@@ -83,11 +69,7 @@ public class OrderController {
                 return ResponseEntity.notFound().build();
             }
         } catch (Exception exception) {
-            if (exception instanceof NumberFormatException) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
-        } else {
-                throw exception;
-            }
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage(), exception);
         }
     }
 
@@ -102,11 +84,7 @@ public class OrderController {
                 return ResponseEntity.notFound().build();
             }
         } catch (Exception exception) {
-                if (exception instanceof NumberFormatException) {
-                    throw new ResponseStatusException(HttpStatus.NOT_FOUND);
-                } else {
-                    throw exception;
-                }
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage(), exception);
         }
     }
 }

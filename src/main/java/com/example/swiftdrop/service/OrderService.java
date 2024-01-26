@@ -5,10 +5,14 @@ import com.example.swiftdrop.model.OrderItem;
 import com.example.swiftdrop.model.Product;
 import lombok.Getter;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
+
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
+import static java.util.Objects.isNull;
 
 
 @Service
@@ -29,39 +33,35 @@ public class OrderService {
     }
 
     public Order update(Order order, Long orderId) {
-        System.out.println(order);
-        if (orders.containsKey(orderId)) {
-            Order oldOrder = orders.get(orderId);
+        Order oldOrder = orders.get(orderId);
+        if (isNull(order)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
             oldOrder.setUpdatedAt(LocalDateTime.now());
             oldOrder.setCustomerId(order.getCustomerId());
             oldOrder.setStatus(order.getStatus());
             oldOrder.setOrderItems(order.getOrderItems());
             orders.put(orderId, oldOrder);
             return oldOrder;
-        } else {
-            return null;
-        }
-
     }
 
     public Order getOrder(Long orderId) {
         Order order = orders.get(orderId);
-
-        if (order != null) {
-            List<OrderItem> orderItems = order.getOrderItems();
-
-            for (OrderItem orderItem : orderItems) {
-                Long productId = orderItem.getProductId();
-                Product product = productService.getProductById(productId);
-
-                if (product != null) {
-                    orderItem.setProductName(product.getName());
-                    orderItem.setProductPrice(product.getPrice());
-                }
-            }
-            return order;
+        if (isNull(order)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
-        return null;
+
+        List<OrderItem> orderItems = order.getOrderItems();
+        for (OrderItem orderItem : orderItems) {
+            Long productId = orderItem.getProductId();
+            Product product = productService.getProductById(productId);
+
+            if (product != null) {
+                orderItem.setProductName(product.getName());
+                orderItem.setProductPrice(product.getPrice());
+            }
+        }
+        return order;
     }
 
 
@@ -81,15 +81,10 @@ public class OrderService {
 
 
     public boolean remove(Long orderId) {
-        if (orders.containsKey(orderId)) {
-            orders.remove(orderId);
-            return true;
-        } else {
-            return false;
-        }
+        { return orders.remove(orderId) != null; }
     }
 
-    public Long createOrderAndAddProducts(Order order) {
+    private Long createOrderAndAddProducts(Order order) {
         Long orderId = createOrder(order.getCustomerId());
 
         for (OrderItem orderItem : order.getOrderItems()) {
@@ -98,7 +93,7 @@ public class OrderService {
             OrderItem newOrderItem = new OrderItem();
             newOrderItem.setProductId(productId);
             newOrderItem.setQuantity(quantity);
-            addProductToOrder(orderId, newOrderItem);
+            addProduct(orderId, newOrderItem);
         }
 
         return orderId;
@@ -120,16 +115,16 @@ public class OrderService {
         return orderId;
     }
 
-    public Order addProductToOrder(Long orderId, OrderItem orderItem) {
+    public Order addProduct(Long orderId, OrderItem orderItem) {
         Order order = orders.get(orderId);
 
-        if (order != null) {
+        if (order == null) { return null; }
             List<OrderItem> orderItems = order.getOrderItems();
 
             boolean productExists = false;
 
             for (OrderItem item : orderItems) {
-                if (item.getProductId().equals(orderItem.getProductId())) {
+                if (item != null && item.getProductId().equals(orderItem.getProductId())) {
                     item.setQuantity(item.getQuantity() + orderItem.getQuantity());
                     productExists = true;
                     break;
@@ -140,7 +135,5 @@ public class OrderService {
             }
             order.setUpdatedAt(LocalDateTime.now());
             return order;
-        }
-        return null;
     }
 }
