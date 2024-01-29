@@ -1,9 +1,7 @@
 package com.example.swiftdrop.controller;
 
-import com.example.swiftdrop.model.Order;
-import com.example.swiftdrop.model.OrderItem;
+import com.example.swiftdrop.model.*;
 import com.example.swiftdrop.service.OrderService;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -16,53 +14,52 @@ public class OrderController {
 
     private final OrderService orderService;
 
-    @Autowired
     public OrderController(OrderService orderService) {
         this.orderService = orderService;
     }
 
 
     @GetMapping("/{id}")
-    public Order getById(@PathVariable String id) {
+    public ExtendedOrder getById(@PathVariable Long id) {
         try {
-            long convertedId = Long.parseLong(id);
-            return orderService.getOrder(convertedId);
+            return orderService.getOrder(id);
         } catch (Exception exception) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage(), exception);
         }
     }
 
     @PostMapping
-    public Order save(@RequestBody Order order) {
-        return orderService.create(order);
+    public Order save(@RequestBody CreateOrderRequest order) {
+       try {
+           return orderService.create(order);
+        } catch (Exception exception) {
+           throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
+       }
+
     }
 
     @PutMapping("/{id}")
-    public Order update(@RequestBody Order order, @PathVariable String id) {
+    public Order update(@RequestBody UpdateOrderRequest order, @PathVariable Long id) {
         try {
-            long convertedId = Long.parseLong(id);
-            return orderService.update(order, convertedId);
+            return orderService.update(order, id);
         } catch (Exception exception) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage(), exception);
         }
     }
 
     @PatchMapping("/{id}")
-    public Order addProduct(@PathVariable String id, @RequestBody OrderItem orderItem) {
+    public Order addProduct(@PathVariable Long id, @RequestBody OrderItem orderItem) {
         try {
-            long convertedId = Long.parseLong(id);
-            return orderService.addProduct(convertedId, orderItem);
+            return orderService.addProduct(id, orderItem);
         } catch (Exception exception) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage(), exception);
         }
     }
 
     @DeleteMapping("/{orderId}/products/{productId}")
-    public ResponseEntity<Void> deleteProduct(@PathVariable String orderId, @PathVariable String productId) {
+    public ResponseEntity<Void> deleteProduct(@PathVariable Long orderId, @PathVariable Long productId) {
         try {
-            long convertedProductId = Long.parseLong(productId);
-            long convertedOrderId = Long.parseLong(orderId);
-            boolean removed = orderService.removeProduct(convertedOrderId, convertedProductId);
+            boolean removed = orderService.removeProduct(orderId, productId);
             if (removed) {
                 return ResponseEntity.noContent().build();
             } else {
@@ -74,10 +71,9 @@ public class OrderController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable String id) {
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
         try {
-            long convertedId = Long.parseLong(id);
-            boolean removed = orderService.remove(convertedId);
+            boolean removed = orderService.remove(id);
             if (removed) {
                 return ResponseEntity.noContent().build();
             } else {

@@ -1,10 +1,8 @@
 package com.example.swiftdrop.service;
+
 import com.example.swiftdrop.enums.OrderStatus;
-import com.example.swiftdrop.model.Order;
-import com.example.swiftdrop.model.OrderItem;
-import com.example.swiftdrop.model.Product;
+import com.example.swiftdrop.model.*;
 import lombok.Getter;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -12,6 +10,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
+
 import static java.util.Objects.isNull;
 
 
@@ -22,46 +21,59 @@ public class OrderService {
     private final AtomicLong orderIdGenerator = new AtomicLong(1);
     private final ProductService productService;
 
-    @Autowired
+
     public OrderService(ProductService productService) {
         this.productService = productService;
     }
 
-    public Order create(Order order) {
+    public Order create(CreateOrderRequest order) {
+        checkRequestBodyForNull(order);
         Long orderId = createOrderAndAddProducts(order);
         return orders.get(orderId);
     }
 
-    public Order update(Order order, Long orderId) {
-        Order oldOrder = orders.get(orderId);
-        if (isNull(order)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
-        }
-            oldOrder.setUpdatedAt(LocalDateTime.now());
-            oldOrder.setCustomerId(order.getCustomerId());
-            oldOrder.setStatus(order.getStatus());
-            oldOrder.setOrderItems(order.getOrderItems());
-            orders.put(orderId, oldOrder);
-            return oldOrder;
+    public Order update(UpdateOrderRequest order, Long orderId) {
+        checkRequestBodyForNull(order);
+        Order oldOrder = getOrderById(orderId);
+        oldOrder.setUpdatedAt(LocalDateTime.now());
+        oldOrder.setCustomerId(order.getCustomerId());
+        oldOrder.setStatus(order.getStatus());
+        oldOrder.setOrderItems(order.getOrderItems());
+        orders.put(orderId, oldOrder);
+        return oldOrder;
     }
 
-    public Order getOrder(Long orderId) {
-        Order order = orders.get(orderId);
-        if (isNull(order)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
-        }
+    public ExtendedOrder getOrder(Long orderId) {
 
+        Order order = getOrderById(orderId);
         List<OrderItem> orderItems = order.getOrderItems();
+        System.out.println("orderItems" + orderItems);
+        List<ExtendedOrderItem> extendedOrderItems = new ArrayList<>();
+
         for (OrderItem orderItem : orderItems) {
             Long productId = orderItem.getProductId();
             Product product = productService.getProductById(productId);
 
             if (product != null) {
-                orderItem.setProductName(product.getName());
-                orderItem.setProductPrice(product.getPrice());
+                ExtendedOrderItem extendedOrderItem = new ExtendedOrderItem();
+                extendedOrderItem.setProductId(productId);
+                extendedOrderItem.setProductName(product.getName());
+                extendedOrderItem.setProductPrice(product.getPrice());
+                extendedOrderItem.setQuantity(orderItem.getQuantity());
+
+                extendedOrderItems.add(extendedOrderItem);
             }
         }
-        return order;
+
+        ExtendedOrder extendedOrder = new ExtendedOrder();
+        extendedOrder.setId(order.getId());
+        extendedOrder.setCustomerId(order.getCustomerId());
+        extendedOrder.setOrderItems(extendedOrderItems);
+        extendedOrder.setStatus(order.getStatus());
+        extendedOrder.setUpdatedAt(order.getUpdatedAt());
+        extendedOrder.setCreatedAt(order.getCreatedAt());
+
+        return extendedOrder;
     }
 
 
@@ -81,13 +93,16 @@ public class OrderService {
 
 
     public boolean remove(Long orderId) {
-        { return orders.remove(orderId) != null; }
+        return orders.remove(orderId) != null;
     }
 
-    private Long createOrderAndAddProducts(Order order) {
+    private Long createOrderAndAddProducts(CreateOrderRequest order) {
         Long orderId = createOrder(order.getCustomerId());
-
-        for (OrderItem orderItem : order.getOrderItems()) {
+        List<OrderItem> orderItems = order.getOrderItems();
+        if (isNull(orderItems)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
+        }
+        for (OrderItem orderItem : orderItems) {
             Long productId = orderItem.getProductId();
             int quantity = orderItem.getQuantity();
             OrderItem newOrderItem = new OrderItem();
@@ -100,7 +115,7 @@ public class OrderService {
 
     }
 
-    public Long createOrder(Long customerId) {
+    private Long createOrder(Long customerId) {
         Long orderId = orderIdGenerator.getAndIncrement();
 
         Order order = new Order();
@@ -118,22 +133,39 @@ public class OrderService {
     public Order addProduct(Long orderId, OrderItem orderItem) {
         Order order = orders.get(orderId);
 
-        if (order == null) { return null; }
-            List<OrderItem> orderItems = order.getOrderItems();
+        if (order == null) {
+            return null;
+        }
+        List<OrderItem> orderItems = order.getOrderItems();
 
-            boolean productExists = false;
+        boolean productExists = false;
 
-            for (OrderItem item : orderItems) {
-                if (item != null && item.getProductId().equals(orderItem.getProductId())) {
-                    item.setQuantity(item.getQuantity() + orderItem.getQuantity());
-                    productExists = true;
-                    break;
-                }
+        for (OrderItem item : orderItems) {
+            if (item != null && item.getProductId().equals(orderItem.getProductId())) {
+                item.setQuantity(item.getQuantity() + orderItem.getQuantity());
+                productExists = true;
+                break;
             }
-            if (!productExists) {
-                orderItems.add(orderItem);
-            }
-            order.setUpdatedAt(LocalDateTime.now());
-            return order;
+        }
+        if (!productExists) {
+            orderItems.add(orderItem);
+        }
+        order.setUpdatedAt(LocalDateTime.now());
+        return order;
+    }
+
+    private Order getOrderById(Long orderId) {
+        Order order = orders.get(orderId);
+        if (isNull(order)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+        return order;
+    }
+
+    private void checkRequestBodyForNull(OrderRequest request) {
+        if (isNull(request)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
+        }
+
     }
 }
