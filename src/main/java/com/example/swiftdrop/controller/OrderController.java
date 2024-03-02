@@ -1,6 +1,9 @@
 package com.example.swiftdrop.controller;
 
-import com.example.swiftdrop.model.*;
+import com.example.swiftdrop.dto.OrderDto;
+import com.example.swiftdrop.request.CreateOrderRequest;
+import com.example.swiftdrop.request.OrderItemRequest;
+import com.example.swiftdrop.request.UpdateOrderRequest;
 import com.example.swiftdrop.service.OrderService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -20,7 +23,7 @@ public class OrderController {
 
 
     @GetMapping("/{id}")
-    public ExtendedOrder getById(@PathVariable Long id) {
+    public OrderDto getOrder(@PathVariable Long id) {
         try {
             return orderService.getOrder(id);
         } catch (Exception exception) {
@@ -29,9 +32,9 @@ public class OrderController {
     }
 
     @PostMapping
-    public Order save(@RequestBody CreateOrderRequest order) {
+    public OrderDto save(@RequestBody CreateOrderRequest request) {
        try {
-           return orderService.create(order);
+           return orderService.save(request);
         } catch (Exception exception) {
            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
        }
@@ -39,16 +42,16 @@ public class OrderController {
     }
 
     @PutMapping("/{id}")
-    public Order update(@RequestBody UpdateOrderRequest order, @PathVariable Long id) {
+    public OrderDto update(@RequestBody UpdateOrderRequest request, @PathVariable Long id) {
         try {
-            return orderService.update(order, id);
+            return orderService.update(request, id);
         } catch (Exception exception) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage(), exception);
         }
     }
 
     @PatchMapping("/{id}")
-    public Order addProduct(@PathVariable Long id, @RequestBody OrderItem orderItem) {
+    public OrderDto addProduct(@PathVariable Long id, @RequestBody OrderItemRequest orderItem) {
         try {
             return orderService.addProduct(id, orderItem);
         } catch (Exception exception) {

@@ -1,16 +1,19 @@
-package com.example.swiftdrop.model;
-import com.example.swiftdrop.enums.OrderStatus;
-import lombok.Data;
-import java.util.List;
-import java.time.LocalDateTime;
+package com.example.swiftdrop.dto;
 
+import com.example.swiftdrop.enums.OrderStatus;
+import lombok.Builder;
+import lombok.Data;
+
+import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
-public class Order {
+@Builder
+public class OrderDto {
     private Long id;
     private Long customerId;
+    private List<OrderDtoItem> orderItems;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private OrderStatus status;
-    private List<OrderItem> orderItems;
 }
