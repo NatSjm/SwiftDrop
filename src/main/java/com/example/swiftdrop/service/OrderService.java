@@ -1,171 +1,139 @@
 package com.example.swiftdrop.service;
 
+import com.example.swiftdrop.converter.OrderConverter;
+import com.example.swiftdrop.entity.Order;
+import com.example.swiftdrop.entity.OrderItem;
+import com.example.swiftdrop.entity.ProductOrderId;
 import com.example.swiftdrop.enums.OrderStatus;
-import com.example.swiftdrop.model.*;
+import com.example.swiftdrop.dto.*;
+import com.example.swiftdrop.repository.OrderItemRepository;
+import com.example.swiftdrop.repository.OrderRepository;
+import com.example.swiftdrop.repository.ProductRepository;
+import com.example.swiftdrop.request.CreateOrderRequest;
+import com.example.swiftdrop.request.OrderItemRequest;
+import com.example.swiftdrop.request.UpdateOrderRequest;
+import jakarta.transaction.Transactional;
+import lombok.AllArgsConstructor;
 import lombok.Getter;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.web.server.ResponseStatusException;
+import com.example.swiftdrop.exception.OrderNotFoundException;
 
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicLong;
-
-import static java.util.Objects.isNull;
+import java.util.stream.Collectors;
 
 
+@AllArgsConstructor
 @Service
 @Getter
 public class OrderService {
     private final Map<Long, Order> orders = new HashMap<>();
-    private final AtomicLong orderIdGenerator = new AtomicLong(1);
-    private final ProductService productService;
+    private final OrderRepository orderRepository;
+    private final OrderItemRepository orderItemRepository;
+    private ProductRepository productRepository;
+    private OrderItemService orderItemService;
 
-
-    public OrderService(ProductService productService) {
-        this.productService = productService;
+    @Transactional
+    public OrderDto save(CreateOrderRequest orderRequest) {
+        Order order = Order.builder().customerId(orderRequest.getCustomerId()).createdAt(LocalDateTime.now()).updatedAt(LocalDateTime.now()).status(OrderStatus.NEW).build();
+        Order savedOrder = orderRepository.save(order);
+        List<OrderItem> orderItems = orderItemService.saveAll(orderRequest.getOrderItems(), savedOrder);
+        savedOrder.setOrderItems(orderItems);
+        return OrderConverter.toOrderDto(savedOrder);
     }
 
-    public Order create(CreateOrderRequest order) {
-        checkRequestBodyForNull(order);
-        Long orderId = createOrderAndAddProducts(order);
-        return orders.get(orderId);
+    public OrderDto getOrder(Long orderId) {
+        return orderRepository.
+                findById(orderId).map(OrderConverter::toOrderDto)
+                .orElseThrow(() -> new IllegalArgumentException("Order not found with id: " + orderId));
     }
 
-    public Order update(UpdateOrderRequest order, Long orderId) {
-        checkRequestBodyForNull(order);
-        Order oldOrder = getOrderById(orderId);
+    public OrderDto update(UpdateOrderRequest orderRequest, Long orderId) {
+        Order oldOrder = orderRepository.findById(orderId)
+                .orElseThrow(() -> new IllegalArgumentException("Order not found with id: " + orderId));
+
         oldOrder.setUpdatedAt(LocalDateTime.now());
-        oldOrder.setCustomerId(order.getCustomerId());
-        oldOrder.setStatus(order.getStatus());
-        oldOrder.setOrderItems(order.getOrderItems());
-        orders.put(orderId, oldOrder);
-        return oldOrder;
-    }
+        oldOrder.setCustomerId(orderRequest.getCustomerId());
+        oldOrder.setStatus(orderRequest.getStatus());
 
-    public ExtendedOrder getOrder(Long orderId) {
+        List<OrderItem> existingOrderItems = oldOrder.getOrderItems();
 
-        Order order = getOrderById(orderId);
-        List<OrderItem> orderItems = order.getOrderItems();
-        System.out.println("orderItems" + orderItems);
-        List<ExtendedOrderItem> extendedOrderItems = new ArrayList<>();
+        Map<Long, OrderItem> existingOrderItemMap = existingOrderItems.stream()
+                .collect(Collectors.toMap(orderItem -> orderItem.getProduct().getId(), orderItem -> orderItem));
 
-        for (OrderItem orderItem : orderItems) {
-            Long productId = orderItem.getProductId();
-            Product product = productService.getProductById(productId);
-
-            if (product != null) {
-                ExtendedOrderItem extendedOrderItem = new ExtendedOrderItem();
-                extendedOrderItem.setProductId(productId);
-                extendedOrderItem.setProductName(product.getName());
-                extendedOrderItem.setProductPrice(product.getPrice());
-                extendedOrderItem.setQuantity(orderItem.getQuantity());
-
-                extendedOrderItems.add(extendedOrderItem);
+        List<OrderItem> updatedOrderItems = new ArrayList<>();
+        for (OrderItemRequest orderItemRequest : orderRequest.getOrderItems()) {
+            OrderItem existingOrderItem = existingOrderItemMap.get(orderItemRequest.getProductId());
+            if (existingOrderItem != null) {
+                existingOrderItem.setQuantity(orderItemRequest.getQuantity());
+                updatedOrderItems.add(existingOrderItem);
+            } else {
+                OrderItem newOrderItem = orderItemService.mapToOrderItem(orderItemRequest, oldOrder);
+                updatedOrderItems.add(newOrderItem);
             }
         }
+        orderItemRepository.saveAll(updatedOrderItems);
+        oldOrder.setOrderItems(updatedOrderItems);
 
-        ExtendedOrder extendedOrder = new ExtendedOrder();
-        extendedOrder.setId(order.getId());
-        extendedOrder.setCustomerId(order.getCustomerId());
-        extendedOrder.setOrderItems(extendedOrderItems);
-        extendedOrder.setStatus(order.getStatus());
-        extendedOrder.setUpdatedAt(order.getUpdatedAt());
-        extendedOrder.setCreatedAt(order.getCreatedAt());
-
-        return extendedOrder;
+        Order savedOrder = orderRepository.save(oldOrder);
+        return OrderConverter.toOrderDto(savedOrder);
     }
 
 
-    public boolean removeProduct(Long orderId, Long productId) {
-        Order order = orders.get(orderId);
-        if (order == null) {
-            return false;
-        }
+    public OrderDto addProduct(Long orderId, OrderItemRequest orderItem) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new IllegalArgumentException("Order not found with id: " + orderId));
 
         List<OrderItem> orderItems = order.getOrderItems();
-        Optional<OrderItem> itemToRemove = orderItems.stream()
-                .filter(item -> item.getProductId().equals(productId))
-                .findFirst();
 
-        return itemToRemove.map(orderItems::remove).orElse(false);
-    }
-
-
-    public boolean remove(Long orderId) {
-        return orders.remove(orderId) != null;
-    }
-
-    private Long createOrderAndAddProducts(CreateOrderRequest order) {
-        Long orderId = createOrder(order.getCustomerId());
-        List<OrderItem> orderItems = order.getOrderItems();
-        if (isNull(orderItems)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
-        }
-        for (OrderItem orderItem : orderItems) {
-            Long productId = orderItem.getProductId();
-            int quantity = orderItem.getQuantity();
-            OrderItem newOrderItem = new OrderItem();
-            newOrderItem.setProductId(productId);
-            newOrderItem.setQuantity(quantity);
-            addProduct(orderId, newOrderItem);
-        }
-
-        return orderId;
-
-    }
-
-    private Long createOrder(Long customerId) {
-        Long orderId = orderIdGenerator.getAndIncrement();
-
-        Order order = new Order();
-        order.setId(orderId);
-        order.setCustomerId(customerId);
-        order.setCreatedAt(LocalDateTime.now());
-        order.setUpdatedAt(LocalDateTime.now());
-        order.setStatus(OrderStatus.NEW);
-        order.setOrderItems(new ArrayList<>());
-        orders.put(orderId, order);
-
-        return orderId;
-    }
-
-    public Order addProduct(Long orderId, OrderItem orderItem) {
-        Order order = orders.get(orderId);
-
-        if (order == null) {
-            return null;
-        }
-        List<OrderItem> orderItems = order.getOrderItems();
 
         boolean productExists = false;
-
         for (OrderItem item : orderItems) {
-            if (item != null && item.getProductId().equals(orderItem.getProductId())) {
+            if (item.getProduct().getId().equals(orderItem.getProductId())) {
                 item.setQuantity(item.getQuantity() + orderItem.getQuantity());
                 productExists = true;
                 break;
             }
         }
+
         if (!productExists) {
-            orderItems.add(orderItem);
+            OrderItem newOrderItem = orderItemService.save(orderItem, order);
+            orderItems.add(newOrderItem);
         }
+
         order.setUpdatedAt(LocalDateTime.now());
-        return order;
+        Order updatedOrder = orderRepository.save(order);
+        return OrderConverter.toOrderDto(updatedOrder);
     }
 
-    private Order getOrderById(Long orderId) {
-        Order order = orders.get(orderId);
-        if (isNull(order)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+    public boolean removeProduct(Long orderId, Long productId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(OrderNotFoundException::new);
+
+        List<OrderItem> orderItems = order.getOrderItems();
+
+        Optional<OrderItem> itemToRemove = orderItems.stream()
+                .filter(item -> item.getProduct().getId().equals(productId))
+                .findFirst();
+
+
+        if (itemToRemove.isPresent()) {
+            orderItems.remove(itemToRemove.get());
+            order.setUpdatedAt(LocalDateTime.now());
+
+            ProductOrderId orderItemId = new ProductOrderId(orderId, productId);
+            orderItemRepository.deleteById(orderItemId);
+            orderRepository.save(order);
+            return true;
+        } else {
+            return false;
         }
-        return order;
     }
 
-    private void checkRequestBodyForNull(OrderRequest request) {
-        if (isNull(request)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
-        }
-
+    public boolean remove(Long orderId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(OrderNotFoundException::new);
+        orderRepository.delete(order);
+        return true;
     }
 }
